@@ -21,7 +21,7 @@ extension ShaderType {
         return ShaderType.listStr()[Int(self.rawValue)]
     }
     static func listStr() -> [String] {
-        return ["Blinn-Phong Shading", "Curvature Rendering"]
+        return ["Blinn-Phong Shading", "Curvature Rendering", "Error"]
     }
 }
 

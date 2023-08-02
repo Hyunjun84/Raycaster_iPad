@@ -22,8 +22,8 @@ kernel void genMLDataCC(texture3d<float, access::write> Vol [[texture(0)]],
     
     const float alpha = 0.25f;
     const float fm = 6;
-    float4 r = 1.f - sinpi(p.z*0.5f) + alpha*(1.f + cospi(2.f*fm*cospi(sqrt(p.x*p.x+p.y*p.y)*0.5f)));
-    float4 val = r/(2.f*(1.f+alpha));
+    float r = 1.f - sinpi(p.z*0.5f) + alpha*(1.f + cospi(2.f*fm*cospi(sqrt(p.x*p.x+p.y*p.y)*0.5f)));
+    float val = r/(2.f*(1.f+alpha));
     
     Vol.write(val, tid);
 }

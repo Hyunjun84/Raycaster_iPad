@@ -67,6 +67,7 @@ enum ShaderType
 {
     ST_BLINN_PHONG=0,
     ST_CURVATURE,
+    ST_ERROR,
     ST_NR_SHADERS
 };
 

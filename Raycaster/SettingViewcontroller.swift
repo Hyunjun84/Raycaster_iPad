@@ -321,7 +321,7 @@ class SettingViewController: UITableViewController {
     override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         // #warning Incomplete implementation, return the number of rows
         let nr_kernels = self.setting?.lattice == .LT_CC ? 1 : 2
-        let cnt = [4, 2, nr_kernels, 1]
+        let cnt = [4, Int(ST_NR_SHADERS.rawValue), nr_kernels, 1]
         return cnt[section]
     }
     

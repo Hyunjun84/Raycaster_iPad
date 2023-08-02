@@ -58,24 +58,15 @@ kernel void genRay(device Ray* ray [[ buffer(0) ]],
     e.xyz = b.xyz+d.xyz*bound.y;
     b.xyz = b.xyz+d.xyz*bound.x;
 
-#if 1
     if(any(fabs(b)>1.0+1e-3) || any(fabs(e)>1.0+1e-3)) {
         b = float4(0);
         e = float4(0);
     }
     
     ray[id] = {b,e};
-#else
-    if(any(fabs(b)<=1.0f) && any(fabs(e)<=1.0f)) {
-        ray[id] = {b,e};
-    } else {
-        ray[id] = {float4(0), float4(0)};
-    }
-#endif
 }
 
-float eval(texture3d<float, access::sample> Vol,
-           float3 p)
+float eval(texture3d<float, access::sample> Vol, float3 p)
 {
     float val = 0;
     switch (kernelType) {
@@ -84,13 +75,10 @@ float eval(texture3d<float, access::sample> Vol,
         case KT_FCCV3 : val = eval_fccv3(Vol, p); break;
     }
     return val;
-    
-  //   return eval_fccv3(Vol, p);
 }
 
 float3 eval_g(texture3d<float, access::sample> Vol, float3 p)
 {
-//    return eval_grad_fccv3(Vol, p);
     float3 val = 0;
     switch (kernelType) {
         case KT_CC6 : val = eval_grad_cc6(Vol, p); break;
@@ -113,6 +101,16 @@ Hessian eval_H(texture3d<float, access::sample> Vol, float3 p)
 
 }
 
+float3 ray2tex(float3 p, float3 scale, float3 dim)
+{
+    return (p/scale*0.5+0.5)*dim-0.5;
+}
+
+float3 tex2ray(float3 p, float3 scale, float3 dim)
+{
+    return ((p+0.5)/dim.xyz-0.5)*2.0*scale;
+}
+
 kernel void raycast(texture2d<float, access::write> Pos [[ texture(0) ]],
                     texture3d<float, access::sample> Vol [[ texture(1) ]],
                     constant Ray* ray [[ buffer(0) ]],
@@ -123,8 +121,8 @@ kernel void raycast(texture2d<float, access::write> Pos [[ texture(0) ]],
                     uint2 tsz [[ threads_per_grid ]])
 {
     const uint id = tsz.x*tid.y+tid.x;
-    float3 p = (ray[id].begin.xyz/scale.xyz*0.5f+0.5f)*dim.xyz - 0.5f; // -0.5 ~ tex_dim-0.5
-    float3 e = (ray[id].end.xyz/scale.xyz*0.5f+0.5f)*dim.xyz - 0.5f;
+    float3 p = ray2tex(ray[id].begin.xyz, scale.xyz, dim.xyz);
+    float3 e = ray2tex(ray[id].end.xyz, scale.xyz, dim.xyz);
     float3 p_prev = p;
     
     const float ray_step = 0.1;
@@ -138,14 +136,14 @@ kernel void raycast(texture2d<float, access::write> Pos [[ texture(0) ]],
     const float3 dir = normalize(e-p)*ray_step;
     
     float4 val = float4(0);
-
     for(int i=0; i<max_iter; i++) {
         p += dir;
         voxel = eval(Vol,p);
         if(orientation*voxel > orientation*level) {
-            if(fabs(voxel-voxel_prev) > 1E-8)
+            if(fabs(voxel-voxel_prev) > 1E-8) {
                 p = (p*(voxel_prev-level)-p_prev*(voxel-level)) / (voxel_prev-voxel);
-            val = float4((((p+0.5f)/dim.xyz)-0.5f)*2.0f*scale.xyz, orientation); // -1 ~ 1
+            }
+            val = float4(tex2ray(p.xyz, scale.xyz, dim.xyz), orientation);
             break;
         }
         voxel_prev = voxel;
@@ -166,8 +164,7 @@ kernel void evalDifferences(texture2d<float, access::write> Gradient [[ texture(
 {
     float4 p = Position.read(tid);
     
-    // convert texture coordinates( [-0.5...(dim-0.5)]
-    p.xyz = ((p.xyz/scale.xyz*0.5f)+0.5f)*dim.xyz-0.5f;
+    p.xyz = ray2tex(p.xyz, scale.xyz, dim.xyz);
 
     float3 g = (float3)(0);
     Hessian H = {float4(0), float4(0)};
