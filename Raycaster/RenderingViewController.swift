@@ -86,7 +86,6 @@ class RenderingViewController: UIViewController, MTKViewDelegate, SettingDelegat
         self.needUpdate = 64
     }
     
-    
     override func viewDidLoad() {
         super.viewDidLoad()
         self.aspectRatio = Float(self.view.bounds.height/self.view.bounds.width)
@@ -140,7 +139,7 @@ class RenderingViewController: UIViewController, MTKViewDelegate, SettingDelegat
                                             isUpdate : needUpdate != 63)
             #else
             needUpdate = 0
-            self.raycaster?.raycasting(queue: self.cmdQueue,
+            self.raycaster?.raycasting(commanBuffer: cmdBuffer,
                                        data: self.data,
                                        camera: self.camera)
             #endif
