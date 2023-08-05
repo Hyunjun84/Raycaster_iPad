@@ -17,24 +17,20 @@ enum DefferedBufferType : Int, CaseIterable {
 }
 
 class Raycaster {
-    let _device : MTLDevice?
     var _PSO_raycast : [MTLComputePipelineState?] = []
     var _PSO_raycastTiled : [MTLComputePipelineState?] = []
     var _PSO_evalGradient : [MTLComputePipelineState?] = []
     let _PSO_initTiledBuffer : MTLComputePipelineState?
     let _PSO_updateTiledBuffer : MTLComputePipelineState?
     
-    let _raySpaceBound : MTLSize?
-    
     var d_defferedFineBuffer : [MTLTexture?] = []
     var d_defferedCoarseBuffer : [MTLTexture?] = []
     
     var currentkernel : Int = 0
 
-    init(device:MTLDevice?, library:MTLLibrary?, raySpaceBound:MTLSize)
+    init(device:MTLDevice?, library:MTLLibrary?, raySpaceBound:MTLSize?)
     {
-        self._raySpaceBound  = raySpaceBound
-        self._device = device
+        guard let device, let library, let raySpaceBound else { fatalError("Error : Unable to create raycaster.") }
         
         // make compute PSOs
         for var kernelType in 0..<KT_NR_KERNELS.rawValue {
@@ -42,32 +38,32 @@ class Raycaster {
             constantValue.setConstantValue(&kernelType,
                                           type: MTLDataType.int,
                                           index: Int(FC_KERNEL_TYPE.rawValue))
-            let FUNC_evalGradient = try? library?.makeFunction(name: "evalDifferences", constantValues: constantValue)
+            let FUNC_evalGradient = try? library.makeFunction(name: "evalDifferences", constantValues: constantValue)
             
             var isTiled = false
             constantValue.setConstantValue(&isTiled,
                                           type: MTLDataType.bool,
                                           index: Int(FC_IS_TILED.rawValue))
-            let FUNC_raycast = try? library?.makeFunction(name: "raycast", constantValues: constantValue)
+            let FUNC_raycast = try? library.makeFunction(name: "raycast", constantValues: constantValue)
             isTiled = true
             constantValue.setConstantValue(&isTiled,
                                           type: MTLDataType.bool,
                                           index: Int(FC_IS_TILED.rawValue))
-            let FUNC_raycastTiled = try? library?.makeFunction(name: "raycast", constantValues: constantValue)
-            
-            let PSO_raycast = try? device?.makeComputePipelineState(function: FUNC_raycast!)
-            let PSO_raycastTiled = try? device?.makeComputePipelineState(function: FUNC_raycastTiled!)
-            let PSO_evalGradient = try? device?.makeComputePipelineState(function: FUNC_evalGradient!)
+            let FUNC_raycastTiled = try? library.makeFunction(name: "raycast", constantValues: constantValue)
+
+            let PSO_raycast = try? device.makeComputePipelineState(function: FUNC_raycast!)
+            let PSO_raycastTiled = try? device.makeComputePipelineState(function: FUNC_raycastTiled!)
+            let PSO_evalGradient = try? device.makeComputePipelineState(function: FUNC_evalGradient!)
             
             self._PSO_raycast.append(PSO_raycast)
             self._PSO_raycastTiled.append(PSO_raycastTiled)
             self._PSO_evalGradient.append(PSO_evalGradient)
         }
         
-        let FUNC_initTiledBuffer = library?.makeFunction(name: "initTiledBuffer")
-        self._PSO_initTiledBuffer = try? device?.makeComputePipelineState(function: FUNC_initTiledBuffer!)
-        let FUNC_updateTiledBuffer = library?.makeFunction(name: "updateTiledBuffer")
-        self._PSO_updateTiledBuffer = try? device?.makeComputePipelineState(function: FUNC_updateTiledBuffer!)
+        let FUNC_initTiledBuffer = library.makeFunction(name: "initTiledBuffer")
+        self._PSO_initTiledBuffer = try? device.makeComputePipelineState(function: FUNC_initTiledBuffer!)
+        let FUNC_updateTiledBuffer = library.makeFunction(name: "updateTiledBuffer")
+        self._PSO_updateTiledBuffer = try? device.makeComputePipelineState(function: FUNC_updateTiledBuffer!)
 
         // make deffered textures
         let tex_descr = MTLTextureDescriptor()
@@ -78,13 +74,13 @@ class Raycaster {
         tex_descr.storageMode = .private
         tex_descr.usage = [.shaderWrite, .shaderRead]
         for _ in DefferedBufferType.allCases {
-            self.d_defferedFineBuffer.append(self._device?.makeTexture(descriptor: tex_descr))
+            self.d_defferedFineBuffer.append(device.makeTexture(descriptor: tex_descr))
         }
 
         tex_descr.width = 128
         tex_descr.height = 128
         for _ in DefferedBufferType.allCases {
-            self.d_defferedCoarseBuffer.append(self._device?.makeTexture(descriptor: tex_descr))
+            self.d_defferedCoarseBuffer.append(device.makeTexture(descriptor: tex_descr))
         }
         
     }
@@ -125,7 +121,6 @@ class Raycaster {
         cmptEncoder?.setComputePipelineState(self._PSO_raycastTiled[currentkernel]!)
         cmptEncoder?.setTexture(self.d_defferedCoarseBuffer[DefferedBufferType.DBT_POS.rawValue], index: 0)
         cmptEncoder?.setTexture(data!.getData(), index: 1)
-        
         cmptEncoder?.setBytes(&data!.aspect_ratio,
                               length: MemoryLayout<vector_float4>.size,
                               index: 0)
@@ -176,10 +171,9 @@ class Raycaster {
         cmptEncoder?.setBytes(&scale,
                               length: MemoryLayout<vector_uint2>.size,
                               index: 0)
-        for t in DefferedBufferType.allCases {
-            cmptEncoder?.setTexture(self.d_defferedFineBuffer[t.rawValue], index: t.rawValue)
-            cmptEncoder?.setTexture(self.d_defferedCoarseBuffer[t.rawValue], index: t.rawValue+4)
-        }
+
+        cmptEncoder?.setTextures(self.d_defferedFineBuffer, range: 0..<4)
+        cmptEncoder?.setTextures(self.d_defferedCoarseBuffer, range: 4..<8)
         cmptEncoder?.dispatchThreadgroups(threadBlocksPerGridTiled,
                                           threadsPerThreadgroup: threadsPerGroup)
         cmptEncoder?.endEncoding()
@@ -191,8 +185,8 @@ class Raycaster {
     {
         let cmptEncoder = cmdBuffer?.makeComputeCommandEncoder()
         let threadsPerGroup = MTLSizeMake(8,8,1)
-        let threadBlocksPerGridTiled = MTLSizeMake(self._raySpaceBound!.width/threadsPerGroup.width,
-                                                   self._raySpaceBound!.height/threadsPerGroup.height,
+        let threadBlocksPerGridTiled = MTLSizeMake(self.d_defferedFineBuffer[0]!.width/threadsPerGroup.width,
+                                                   self.d_defferedFineBuffer[0]!.height/threadsPerGroup.height,
                                                    1)
         
         var invMVP : simd_float4x4 = simd_mul(simd_mul(camera.P, camera.V), data!.M).inverse

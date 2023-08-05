@@ -27,7 +27,7 @@ struct RasterizerData
     float2 texCoordinate;
 };
 
-vertex RasterizerData
+[[vertex]] RasterizerData
 vertexShader(uint vertexID [[vertex_id]],
              constant Vertex *vertices [[buffer(VertexInputIndexVertices)]])
 {
@@ -92,7 +92,7 @@ float4 Error(float3 p, float3 g, texture2d<float, access::sample> ColorMap, floa
     return ColorMap.sample(linear_sampler, float2(t,t))*2-1;
 }
 
-fragment float4 fragmentShader(RasterizerData in [[stage_in]],
+[[fragment]] float4 fragmentShader(RasterizerData in [[stage_in]],
                                constant float4x4& MV [[ buffer(0) ]],
                                constant Light& light [[buffer(1)]],
                                constant Material& front [[buffer(2)]],

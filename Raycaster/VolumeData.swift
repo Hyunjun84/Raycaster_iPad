@@ -10,7 +10,6 @@ import MetalKit
 
 class VolumeData{
     let device : MTLDevice?
-    var queue : MTLCommandQueue?
     let psoGenMLCC : MTLComputePipelineState?
     let psoQuasiCC : MTLComputePipelineState?
     let psoGenMLFCC : MTLComputePipelineState?
@@ -18,6 +17,7 @@ class VolumeData{
 
     var dVolume : MTLTexture?
     var dVolumeQI : MTLTexture?
+    
     var aspect_ratio : simd_float4?
     var scale : simd_float4?
     var dim : simd_float4?
@@ -30,18 +30,23 @@ class VolumeData{
     
     init(with device : MTLDevice?, library : MTLLibrary?)
     {
+        guard let device, let library else { fatalError("Error") }
         self.device = device
-        let FUNC_genMLCC = library?.makeFunction(name: "genMLDataCC")
-        let FUNC_quasiCC = library?.makeFunction(name: "applyQuasiInterpolatorCC")
-        self.psoGenMLCC = try? self.device?.makeComputePipelineState(function: FUNC_genMLCC!)
-        self.psoQuasiCC = try? self.device?.makeComputePipelineState(function: FUNC_quasiCC!)
+
+        let FUNC_genMLCC = library.makeFunction(name: "genMLDataCC")
+        let FUNC_genMLFCC = library.makeFunction(name: "genMLDataFCC")
+
+        let FUNC_quasiCC = library.makeFunction(name: "applyQuasiInterpolatorCC")
+        let FUNC_quasiFCC = library.makeFunction(name: "applyQuasiInterpolatorFCC")
+
+        self.psoGenMLCC = try? device.makeComputePipelineState(function: FUNC_genMLCC!)
+        self.psoQuasiCC = try? device.makeComputePipelineState(function: FUNC_quasiCC!)
         
-        let FUNC_genMLFCC = library?.makeFunction(name: "genMLDataFCC")
-        let FUNC_quasiFCC = library?.makeFunction(name: "applyQuasiInterpolatorFCC")
-        self.psoGenMLFCC = try? self.device?.makeComputePipelineState(function: FUNC_genMLFCC!)
-        self.psoQuasiFCC = try? self.device?.makeComputePipelineState(function: FUNC_quasiFCC!)
+        self.psoGenMLFCC = try? device.makeComputePipelineState(function: FUNC_genMLFCC!)
+        self.psoQuasiFCC = try? device.makeComputePipelineState(function: FUNC_quasiFCC!)
         
         self.M = simd_float4x4(diagonal: simd_float4(simd_float3(repeating:0.5), 1))
+        
         self.QI = false
     }
     
@@ -53,9 +58,9 @@ class VolumeData{
         }
     }
     
-    func genMLData(with resolution : MTLSize, queue : MTLCommandQueue?, lattice : LatticeType) {
-        guard queue != nil else {return}
-        
+    func genMLData(resolution : MTLSize?, cmdBuffer : MTLCommandBuffer?, lattice:LatticeType)
+    {
+        guard let cmdBuffer, let resolution else { return }
         switch lattice {
             case .LT_CC :
                 self.res = simd_make_float4(Float(resolution.width),
@@ -77,7 +82,7 @@ class VolumeData{
                                             1.0)
         }
         self.aspect_ratio = simd_make_float4(1, 1, 1, 1)
-        
+
         let tex_descr = MTLTextureDescriptor()
         tex_descr.textureType = MTLTextureType.type3D
         switch lattice {
@@ -87,13 +92,14 @@ class VolumeData{
         tex_descr.width = resolution.width
         tex_descr.height = resolution.height
         tex_descr.depth = resolution.depth
+        tex_descr.storageMode = .private
         tex_descr.usage = [MTLTextureUsage.shaderWrite, MTLTextureUsage.shaderRead]
         
         self.dVolume = self.device?.makeTexture(descriptor: tex_descr)
         self.dVolumeQI = self.device?.makeTexture(descriptor: tex_descr)
         
-        let cmdBuffer = queue!.makeCommandBuffer()
-        let cmdEncoder = cmdBuffer?.makeComputeCommandEncoder()
+        
+        let cmdEncoder = cmdBuffer.makeComputeCommandEncoder()
         switch lattice {
             case .LT_CC: cmdEncoder?.setComputePipelineState(self.psoGenMLCC!)
             case .LT_FCC: cmdEncoder?.setComputePipelineState(self.psoGenMLFCC!)
@@ -107,38 +113,59 @@ class VolumeData{
                                               (resolution.depth+threadsPerGroup.depth-1)/threadsPerGroup.depth)
         cmdEncoder?.dispatchThreadgroups(threadBlocksPerGrid,
                                          threadsPerThreadgroup: threadsPerGroup)
-        
         cmdEncoder?.endEncoding()
-        cmdBuffer?.commit()
-        cmdBuffer?.waitUntilCompleted()
     }
     
-    func applyQuasi(coefficents coeff : simd_float4, queue : MTLCommandQueue?, lattice : LatticeType)
+    
+    func applyQuasiInterpolator(cmdBuffer : MTLCommandBuffer?, lattice:LatticeType, QICoef:simd_float4?)
     {
-        guard queue != nil else {return}
-        let cmdBuffer = queue!.makeCommandBuffer()
-        let cmdEncoder = cmdBuffer?.makeComputeCommandEncoder()
+        guard let cmdBuffer else { return }
+        guard let dVolume = self.dVolume else { return}
+        
+        let tex_descr = MTLTextureDescriptor()
+        tex_descr.textureType = MTLTextureType.type3D
+        switch lattice {
+            case .LT_FCC : tex_descr.pixelFormat = MTLPixelFormat.rgba32Float
+            case .LT_CC :tex_descr.pixelFormat = MTLPixelFormat.r32Float
+        }
+        tex_descr.width = dVolume.width
+        tex_descr.height = dVolume.height
+        tex_descr.depth = dVolume.depth
+        tex_descr.storageMode = .private
+        tex_descr.usage = [MTLTextureUsage.shaderWrite, MTLTextureUsage.shaderRead]
+        
+        self.dVolumeQI = self.device?.makeTexture(descriptor: tex_descr)
+
+        let threadsPerGroup = MTLSizeMake(8, 8, 8)
+        let threadBlocksPerGrid = MTLSizeMake((dVolume.width+threadsPerGroup.width-1)/threadsPerGroup.width,
+                                              (dVolume.height+threadsPerGroup.height-1)/threadsPerGroup.height,
+                                              (dVolume.depth+threadsPerGroup.depth-1)/threadsPerGroup.depth)
+  
+        let cmdEncoder = cmdBuffer.makeComputeCommandEncoder()
         switch lattice {
             case .LT_CC : cmdEncoder?.setComputePipelineState(self.psoQuasiCC!)
             case .LT_FCC : cmdEncoder?.setComputePipelineState(self.psoQuasiFCC!)
         }
+        var coef = QICoef
         cmdEncoder?.setTexture(self.dVolumeQI, index: 0)
         cmdEncoder?.setTexture(self.dVolume, index: 1)
         cmdEncoder?.setBytes(&self.dim!, length: MemoryLayout<simd_float4>.size, index: 0)
-        var coef = coeff
         cmdEncoder?.setBytes(&coef, length: MemoryLayout<simd_float4>.size, index: 1)
-
-        let iDim = MTLSizeMake(Int(dim!.x), Int(dim!.y), Int(dim!.z))
-        let threadsPerGroup = MTLSizeMake(8, 8, 8)
-        let threadBlocksPerGrid = MTLSizeMake((iDim.width+threadsPerGroup.width-1)/threadsPerGroup.width,
-                                              (iDim.height+threadsPerGroup.height-1)/threadsPerGroup.height,
-                                              (iDim.depth+threadsPerGroup.depth-1)/threadsPerGroup.depth)
+        
         cmdEncoder?.dispatchThreadgroups(threadBlocksPerGrid,
                                          threadsPerThreadgroup: threadsPerGroup)
-        
         cmdEncoder?.endEncoding()
-        cmdBuffer?.commit()
-        cmdBuffer?.waitUntilCompleted()
+    }
+    
+    func genMLDataWithQI(resolution : MTLSize?, cmdBuffer : MTLCommandBuffer?, lattice:LatticeType, QICoef:simd_float4?)
+    {
+        guard let cmdBuffer else { return }
+        self.genMLData(resolution: resolution,
+                       cmdBuffer: cmdBuffer,
+                       lattice: lattice)
+        self.applyQuasiInterpolator(cmdBuffer: cmdBuffer,
+                                    lattice: lattice,
+                                    QICoef: QICoef)
     }
     
     func applyMap(map m : simd_float4x4)

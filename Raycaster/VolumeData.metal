@@ -12,7 +12,7 @@ constexpr sampler sp_texel(coord::pixel,
                            filter::nearest,
                            address::clamp_to_edge);
 
-kernel void genMLDataCC(texture3d<float, access::write> Vol [[texture(0)]],
+[[kernel]] void genMLDataCC(texture3d<float, access::write> Vol [[texture(0)]],
                       constant float4& dim [[ buffer(0) ]],
                       uint3 tid [[ thread_position_in_grid ]],
                       uint3 tsz [[ threads_per_grid ]])
@@ -28,7 +28,7 @@ kernel void genMLDataCC(texture3d<float, access::write> Vol [[texture(0)]],
     Vol.write(val, tid);
 }
 
-kernel void genMLDataFCC(texture3d<float, access::write> Vol [[texture(0)]],
+[[kernel]] void genMLDataFCC(texture3d<float, access::write> Vol [[texture(0)]],
                       constant float4& dim [[ buffer(0) ]],
                       uint3 tid [[ thread_position_in_grid ]],
                       uint3 tsz [[ threads_per_grid ]])
@@ -50,7 +50,7 @@ kernel void genMLDataFCC(texture3d<float, access::write> Vol [[texture(0)]],
     Vol.write(val, tid);
 }
 
-kernel void applyQuasiInterpolatorCC(texture3d<float, access::write> Out [[texture(0)]],
+[[kernel]] void applyQuasiInterpolatorCC(texture3d<float, access::write> Out [[texture(0)]],
                                        texture3d<float, access::sample> In [[texture(1)]],
                                        constant float4& dim [[ buffer(0) ]],
                                        constant float4& coef [[ buffer(1) ]],
@@ -100,7 +100,7 @@ kernel void applyQuasiInterpolatorCC(texture3d<float, access::write> Out [[textu
     Out.write(ret,tid);
 }
 
-kernel void applyQuasiInterpolatorFCC(texture3d<float, access::write> Out [[texture(0)]],
+[[kernel]] void applyQuasiInterpolatorFCC(texture3d<float, access::write> Out [[texture(0)]],
                                        texture3d<float, access::sample> In [[texture(1)]],
                                        constant float4& dim [[ buffer(0) ]],
                                        constant float4& coef [[ buffer(1) ]],

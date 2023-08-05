@@ -24,7 +24,7 @@ class RenderingViewController: UIViewController, MTKViewDelegate, SettingDelegat
     init(setting : inout Settings) {
         super.init(nibName: nil, bundle: nil)
         
-        let device = MTLCreateSystemDefaultDevice()
+        guard let device = MTLCreateSystemDefaultDevice() else {return}
         
         // make MTLView
         let _mtkView = MTKView()
@@ -32,14 +32,15 @@ class RenderingViewController: UIViewController, MTKViewDelegate, SettingDelegat
         _mtkView.clearColor = MTLClearColorMake(1, 1, 1, 1.0)
         _mtkView.delegate = self
         self.view = _mtkView
-        
+
+        // make library and queue
+        guard let library = device.makeDefaultLibrary() else {return}
+        self.cmdQueue = device.makeCommandQueue()
+
         // make renderer
-        self.renderer = Renderer(_mtkView)
-        self.camera.setFov(FOV: self.aspectRatio, aspectRatio: Float(_mtkView.drawableSize.height/_mtkView.drawableSize.width))
-      
-        // make common library and queue
-        let library = device?.makeDefaultLibrary()
-        self.cmdQueue = device?.makeCommandQueue()
+        self.renderer = Renderer(_mtkView, device:device, library:library, queue:cmdQueue)
+        self.camera.setFov(FOV: self.aspectRatio,
+                           aspectRatio: Float(_mtkView.drawableSize.height/_mtkView.drawableSize.width))
         
         // make Raycaster
         let raySpaceBound = MTLSizeMake(setting.rayBounds.0, setting.rayBounds.1, 1)
@@ -48,11 +49,14 @@ class RenderingViewController: UIViewController, MTKViewDelegate, SettingDelegat
         let coef = self.raycaster?.getQICoeff()
         
         // load ML data
-        self.data = VolumeData(with: device!, library: library!)
+        let cmdBuffer = self.cmdQueue?.makeCommandBuffer()
+        self.data = VolumeData(with: device, library: library)
         self.data?.level = setting.level
-        self.data?.genMLData(with: MTLSizeMake(setting.resolution, setting.resolution, setting.resolution),
-                             queue: self.cmdQueue, lattice:setting.lattice)
-        self.data?.applyQuasi(coefficents: coef!, queue: cmdQueue, lattice: setting.lattice)
+        self.data?.genMLDataWithQI(resolution: MTLSizeMake(setting.resolution, setting.resolution, setting.resolution),
+                                   cmdBuffer: cmdBuffer,
+                                   lattice: setting.lattice,
+                                   QICoef: coef)
+        cmdBuffer?.commit()
         
         // register delegate
         setting.addDelegate(delegate: self)
@@ -99,10 +103,14 @@ class RenderingViewController: UIViewController, MTKViewDelegate, SettingDelegat
     }
     
     func didChangeVolmeDataSettings(Settings setting: Settings) {
-        self.data?.genMLData(with: MTLSizeMake(setting.resolution, setting.resolution, setting.resolution),
-                             queue: self.cmdQueue, lattice:setting.lattice)
+        
         let coef = self.raycaster?.getQICoeff()
-        self.data?.applyQuasi(coefficents: coef!, queue: self.cmdQueue, lattice: setting.lattice)
+        let cmdBuffer = self.cmdQueue?.makeCommandBuffer()
+        self.data?.genMLDataWithQI(resolution: MTLSizeMake(setting.resolution, setting.resolution, setting.resolution),
+                                   cmdBuffer: cmdBuffer,
+                                   lattice: setting.lattice,
+                                   QICoef: coef)
+        cmdBuffer?.commit()
         self.data?.QI = setting.useQI
         self.data?.level = setting.level
         self.setNeedUpdate()
@@ -116,7 +124,9 @@ class RenderingViewController: UIViewController, MTKViewDelegate, SettingDelegat
     func didChangeKernelTypeSettings(Settings setting: Settings) {
         self.raycaster?.currentkernel = Int(setting.kernel.rawValue)
         let coef = self.raycaster?.getQICoeff()
-        self.data?.applyQuasi(coefficents: coef!, queue: self.cmdQueue, lattice:setting.lattice)
+        let cmdBuffer = self.cmdQueue?.makeCommandBuffer()
+        self.data?.applyQuasiInterpolator(cmdBuffer: cmdBuffer, lattice: setting.lattice, QICoef: coef)
+        cmdBuffer?.commit()
         self.setNeedUpdate()
     }
 

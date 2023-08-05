@@ -60,7 +60,7 @@ float3 tex2ray(float3 p, float3 scale, float3 dim)
     return ((p+0.5)/dim.xyz-0.5)*2.0*scale;
 }
 
-kernel void raycast(texture2d<float, access::write> Pos [[ texture(0) ]],
+[[kernel]] void raycast(texture2d<float, access::write> Pos [[ texture(0) ]],
                     texture3d<float, access::sample> Vol [[ texture(1) ]],
                     constant float4& aspectRatio [[ buffer(0) ]],
                     constant float4& dim [[ buffer(1) ]],
@@ -140,7 +140,7 @@ kernel void raycast(texture2d<float, access::write> Pos [[ texture(0) ]],
     Pos.write(val, tid);
 }
 
-kernel void evalDifferences(texture2d<float, access::write> Gradient [[ texture(0) ]],
+[[kernel]] void evalDifferences(texture2d<float, access::write> Gradient [[ texture(0) ]],
                             texture2d<float, access::write> HessianII [[ texture(1) ]],
                             texture2d<float, access::write> HessianIJ [[ texture(2) ]],
                             texture2d<float, access::read> Position [[ texture(3) ]],
@@ -171,7 +171,7 @@ kernel void evalDifferences(texture2d<float, access::write> Gradient [[ texture(
     HessianIJ.write(H.dij, tid);
 }
 
-kernel void initTiledBuffer(array<texture2d<float, access::write>, 4> Out [[ texture(0) ]],
+[[kernel]] void initTiledBuffer(array<texture2d<float, access::write>, 4> Out [[ texture(0) ]],
                              array<texture2d<float, access::sample>, 4> In [[ texture(4) ]],
                              constant uint2& tileScale [[ buffer(0) ]],
                              uint2 tid [[ thread_position_in_grid ]],
@@ -193,7 +193,7 @@ kernel void initTiledBuffer(array<texture2d<float, access::write>, 4> Out [[ tex
 }
 
 
-kernel void updateTiledBuffer(array<texture2d<float, access::write>, 4> Out [[ texture(0) ]],
+[[kernel]] void updateTiledBuffer(array<texture2d<float, access::write>, 4> Out [[ texture(0) ]],
                                array<texture2d<float, access::sample>, 4> In [[ texture(4) ]],
                                constant uint2& tileScale [[ buffer(0) ]],
                                constant uint2& tileOffset [[ buffer(1) ]],

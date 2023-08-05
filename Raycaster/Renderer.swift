@@ -38,11 +38,7 @@ class Renderer {
         Vertex(position: vector_float2( 1,  1), texCoordinate: vector_float2(1,1))
     ]
     
-    init(_ mtkview: MTKView?) {
-        // make Render PSO
-        let device = mtkview?.device
-        let library = device?.makeDefaultLibrary()
-
+    init(_ mtkview: MTKView?, device:MTLDevice?, library : MTLLibrary?, queue : MTLCommandQueue?) {
         for shaderType in 0..<ST_NR_SHADERS.rawValue {
             let constantValue = MTLFunctionConstantValues()
             var value = shaderType
@@ -61,23 +57,7 @@ class Renderer {
             self._PSO_render.append(try? device?.makeRenderPipelineState(descriptor: piplineStateDescriptor))
             
         }
-        
-        let colormap = [half4(1.0, 0.0, 0.0, 1.0), half4(1.0, 1.0, 0.0, 1.0), half4(0.0, 1.0, 0.0, 1.0),
-                        half4(0.5, 0.5, 0.5, 1.0), half4(0.5, 0.5, 0.5, 1.0), half4(0.0, 1.0, 1.0, 1.0),
-                        half4(0.5, 0.5, 0.5, 1.0), half4(0.5, 0.5, 0.5, 1.0), half4(0.0, 0.0, 1.0, 1.0)];
-        
-        let tex_descr = MTLTextureDescriptor()
-        tex_descr.textureType = MTLTextureType.type2D
-        tex_descr.pixelFormat = MTLPixelFormat.rgba16Float
-        tex_descr.width = 3
-        tex_descr.height = 3
-        tex_descr.storageMode = .shared
-        tex_descr.usage = [.shaderRead]
-        self.d_colormap = device?.makeTexture(descriptor: tex_descr)
-        let region = MTLRegion(origin: MTLOriginMake(0, 0, 0), size: MTLSizeMake(3, 3, 1))
-        self.d_colormap?.replace(region: region, mipmapLevel: 0, withBytes: colormap, bytesPerRow: 3*MemoryLayout<half4>.size)
-        
-        
+
         /* http://devernay.free.fr/cours/opengl/materials.html
         let emerald = Material(ambient: simd_float3(0.0215, 0.1745, 0.0215), diffuse: simd_float3(0.07568, 0.61424, 0.07568), specular: simd_float3(0.633, 0.727811, 0.633), shininess: 0.6*128)
         let jade = Material(ambient: simd_float3(0.135, 0.2225, 0.1575), diffuse: simd_float3(0.54, 0.89, 0.63), specular: simd_float3(0.316228, 0.316228, 0.316228), shininess: 0.1*128)
@@ -104,7 +84,6 @@ class Renderer {
         let white_rubber = Material(ambient: simd_float3(0.05, 0.05, 0.05), diffuse: simd_float3(0.5, 0.5, 0.5), specular: simd_float3(0.7, 0.7, 0.7), shininess: .078125*128)
         let yellow_rubber = Material(ambient: simd_float3(0.05, 0.05, 0.0), diffuse: simd_float3(0.5, 0.5, 0.4), specular: simd_float3(0.7, 0.7, 0.04), shininess: .078125*128))
         */
-        
         let jade = Material(ambient: simd_float3(0.135, 0.2225, 0.1575), diffuse: simd_float3(0.54, 0.89, 0.63), specular: simd_float3(0.316228, 0.316228, 0.316228), shininess: 0.1*128)
         let ruby = Material(ambient: simd_float3(0.1745, 0.01175, 0.01175), diffuse: simd_float3(0.61424, 0.04136, 0.04136), specular: simd_float3(0.727811, 0.626959, 0.626959), shininess: 0.6*128)
         self.light = Light(
@@ -117,6 +96,32 @@ class Renderer {
         self.material.append(jade)
         // back face color
         self.material.append(ruby)
+
+        
+        let colormap = [half4(1.0, 0.0, 0.0, 1.0), half4(1.0, 1.0, 0.0, 1.0), half4(0.0, 1.0, 0.0, 1.0),
+                        half4(0.5, 0.5, 0.5, 1.0), half4(0.5, 0.5, 0.5, 1.0), half4(0.0, 1.0, 1.0, 1.0),
+                        half4(0.5, 0.5, 0.5, 1.0), half4(0.5, 0.5, 0.5, 1.0), half4(0.0, 0.0, 1.0, 1.0)];
+        
+        let tex_descr = MTLTextureDescriptor()
+        tex_descr.textureType = MTLTextureType.type2D
+        tex_descr.pixelFormat = MTLPixelFormat.rgba16Float
+        tex_descr.width = 3
+        tex_descr.height = 3
+        tex_descr.storageMode = .shared
+        tex_descr.usage = [.shaderRead]
+        let tmp = device?.makeTexture(descriptor: tex_descr)
+        tex_descr.storageMode = .private
+        self.d_colormap = device?.makeTexture(descriptor: tex_descr)
+        
+        let region = MTLRegionMake2D(0, 0, 3, 3)
+        tmp?.replace(region: region, mipmapLevel: 0, withBytes: colormap, bytesPerRow: 3*MemoryLayout<half4>.size)
+        
+        guard let cmdBuffer = queue?.makeCommandBuffer(),
+              let blitEncoder = cmdBuffer.makeBlitCommandEncoder() else {return}
+        blitEncoder.copy(from: tmp!, to: self.d_colormap!)
+        blitEncoder.endEncoding()
+        cmdBuffer.commit()
+        
     }
     
     func draw(in view: MTKView!, commandBuffer cmdBuffer:MTLCommandBuffer?, buffer : [MTLTexture?], MV : inout simd_float4x4, level:Float)
