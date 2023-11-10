@@ -156,7 +156,7 @@ class RenderingViewController: UIViewController, MTKViewDelegate, SettingDelegat
         }
         
         var MV = simd_mul(camera.V, data!.M)
-        let buffer = self.raycaster!.getDefferedBuffer()
+        let buffer = self.raycaster!.getdefferredBuffer()
         self.renderer!.draw(in: view, commandBuffer: cmdBuffer, buffer: buffer, MV: &MV, level:self.data!.level!)
         
         cmdBuffer?.commit()

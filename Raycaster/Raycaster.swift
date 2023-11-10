@@ -9,7 +9,7 @@ import Foundation
 import MetalKit
 import simd
 
-enum DefferedBufferType : Int, CaseIterable {
+enum defferredBufferType : Int, CaseIterable {
     case DBT_POS = 0
     case DBT_GRAD
     case DBT_H_II
@@ -23,8 +23,8 @@ class Raycaster {
     let _PSO_initTiledBuffer : MTLComputePipelineState?
     let _PSO_updateTiledBuffer : MTLComputePipelineState?
     
-    var d_defferedFineBuffer : [MTLTexture?] = []
-    var d_defferedCoarseBuffer : [MTLTexture?] = []
+    var d_defferredFineBuffer : [MTLTexture?] = []
+    var d_defferredCoarseBuffer : [MTLTexture?] = []
     
     var currentkernel : Int = 0
 
@@ -65,7 +65,7 @@ class Raycaster {
         let FUNC_updateTiledBuffer = library.makeFunction(name: "updateTiledBuffer")
         self._PSO_updateTiledBuffer = try? device.makeComputePipelineState(function: FUNC_updateTiledBuffer!)
 
-        // make deffered textures
+        // make defferred textures
         let tex_descr = MTLTextureDescriptor()
         tex_descr.textureType = .type2D
         tex_descr.pixelFormat = .rgba16Float
@@ -73,14 +73,14 @@ class Raycaster {
         tex_descr.height = raySpaceBound.height
         tex_descr.storageMode = .private
         tex_descr.usage = [.shaderWrite, .shaderRead]
-        for _ in DefferedBufferType.allCases {
-            self.d_defferedFineBuffer.append(device.makeTexture(descriptor: tex_descr))
+        for _ in defferredBufferType.allCases {
+            self.d_defferredFineBuffer.append(device.makeTexture(descriptor: tex_descr))
         }
 
         tex_descr.width = 128
         tex_descr.height = 128
-        for _ in DefferedBufferType.allCases {
-            self.d_defferedCoarseBuffer.append(device.makeTexture(descriptor: tex_descr))
+        for _ in defferredBufferType.allCases {
+            self.d_defferredCoarseBuffer.append(device.makeTexture(descriptor: tex_descr))
         }
         
     }
@@ -119,7 +119,7 @@ class Raycaster {
         
         // raycasting
         cmptEncoder?.setComputePipelineState(self._PSO_raycastTiled[currentkernel]!)
-        cmptEncoder?.setTexture(self.d_defferedCoarseBuffer[DefferedBufferType.DBT_POS.rawValue], index: 0)
+        cmptEncoder?.setTexture(self.d_defferredCoarseBuffer[defferredBufferType.DBT_POS.rawValue], index: 0)
         cmptEncoder?.setTexture(data!.getData(), index: 1)
         cmptEncoder?.setBytes(&data!.aspect_ratio,
                               length: MemoryLayout<vector_float4>.size,
@@ -144,10 +144,10 @@ class Raycaster {
         
         // compute differences
         cmptEncoder?.setComputePipelineState(self._PSO_evalGradient[currentkernel]!)
-        cmptEncoder?.setTexture(self.d_defferedCoarseBuffer[DefferedBufferType.DBT_GRAD.rawValue], index: 0)
-        cmptEncoder?.setTexture(self.d_defferedCoarseBuffer[DefferedBufferType.DBT_H_II.rawValue], index: 1)
-        cmptEncoder?.setTexture(self.d_defferedCoarseBuffer[DefferedBufferType.DBT_H_IJ.rawValue], index: 2)
-        cmptEncoder?.setTexture(self.d_defferedCoarseBuffer[DefferedBufferType.DBT_POS.rawValue], index: 3)
+        cmptEncoder?.setTexture(self.d_defferredCoarseBuffer[defferredBufferType.DBT_GRAD.rawValue], index: 0)
+        cmptEncoder?.setTexture(self.d_defferredCoarseBuffer[defferredBufferType.DBT_H_II.rawValue], index: 1)
+        cmptEncoder?.setTexture(self.d_defferredCoarseBuffer[defferredBufferType.DBT_H_IJ.rawValue], index: 2)
+        cmptEncoder?.setTexture(self.d_defferredCoarseBuffer[defferredBufferType.DBT_POS.rawValue], index: 3)
         cmptEncoder?.setTexture(data!.getData(), index: 4)
         cmptEncoder?.setBytes(&data!.dim,
                               length: MemoryLayout<vector_float4>.size,
@@ -159,7 +159,7 @@ class Raycaster {
         cmptEncoder?.dispatchThreadgroups(threadBlocksPerGridTiled,
                                           threadsPerThreadgroup: threadsPerGroup)
         
-        // update backbuffer
+        // update buffer
         if isUpdate {
             cmptEncoder?.setComputePipelineState(self._PSO_updateTiledBuffer!)
             cmptEncoder?.setBytes(&offset,
@@ -172,8 +172,8 @@ class Raycaster {
                               length: MemoryLayout<vector_uint2>.size,
                               index: 0)
 
-        cmptEncoder?.setTextures(self.d_defferedFineBuffer, range: 0..<4)
-        cmptEncoder?.setTextures(self.d_defferedCoarseBuffer, range: 4..<8)
+        cmptEncoder?.setTextures(self.d_defferredFineBuffer, range: 0..<4)
+        cmptEncoder?.setTextures(self.d_defferredCoarseBuffer, range: 4..<8)
         cmptEncoder?.dispatchThreadgroups(threadBlocksPerGridTiled,
                                           threadsPerThreadgroup: threadsPerGroup)
         cmptEncoder?.endEncoding()
@@ -185,15 +185,15 @@ class Raycaster {
     {
         let cmptEncoder = cmdBuffer?.makeComputeCommandEncoder()
         let threadsPerGroup = MTLSizeMake(8,8,1)
-        let threadBlocksPerGridTiled = MTLSizeMake(self.d_defferedFineBuffer[0]!.width/threadsPerGroup.width,
-                                                   self.d_defferedFineBuffer[0]!.height/threadsPerGroup.height,
+        let threadBlocksPerGridTiled = MTLSizeMake(self.d_defferredFineBuffer[0]!.width/threadsPerGroup.width,
+                                                   self.d_defferredFineBuffer[0]!.height/threadsPerGroup.height,
                                                    1)
         
         var invMVP : simd_float4x4 = simd_mul(simd_mul(camera.P, camera.V), data!.M).inverse
 
         // raycasting
         cmptEncoder?.setComputePipelineState(self._PSO_raycast[currentkernel]!)
-        cmptEncoder?.setTexture(self.d_defferedFineBuffer[DefferedBufferType.DBT_POS.rawValue], index: 0)
+        cmptEncoder?.setTexture(self.d_defferredFineBuffer[defferredBufferType.DBT_POS.rawValue], index: 0)
         cmptEncoder?.setTexture(data!.getData(), index: 1)
         
         cmptEncoder?.setBytes(&data!.aspect_ratio,
@@ -213,10 +213,10 @@ class Raycaster {
         
         // compute differences
         cmptEncoder?.setComputePipelineState(self._PSO_evalGradient[currentkernel]!)
-        cmptEncoder?.setTexture(self.d_defferedFineBuffer[DefferedBufferType.DBT_GRAD.rawValue], index: 0)
-        cmptEncoder?.setTexture(self.d_defferedFineBuffer[DefferedBufferType.DBT_H_II.rawValue], index: 1)
-        cmptEncoder?.setTexture(self.d_defferedFineBuffer[DefferedBufferType.DBT_H_IJ.rawValue], index: 2)
-        cmptEncoder?.setTexture(self.d_defferedFineBuffer[DefferedBufferType.DBT_POS.rawValue], index: 3)
+        cmptEncoder?.setTexture(self.d_defferredFineBuffer[defferredBufferType.DBT_GRAD.rawValue], index: 0)
+        cmptEncoder?.setTexture(self.d_defferredFineBuffer[defferredBufferType.DBT_H_II.rawValue], index: 1)
+        cmptEncoder?.setTexture(self.d_defferredFineBuffer[defferredBufferType.DBT_H_IJ.rawValue], index: 2)
+        cmptEncoder?.setTexture(self.d_defferredFineBuffer[defferredBufferType.DBT_POS.rawValue], index: 3)
         cmptEncoder?.setTexture(data!.getData(), index: 4)
         cmptEncoder?.setBytes(&data!.dim,
                               length: MemoryLayout<vector_float4>.size,
@@ -229,14 +229,14 @@ class Raycaster {
         cmptEncoder?.endEncoding()
     }
     
-    func getDefferedBuffer() -> [MTLTexture?]
+    func getdefferredBuffer() -> [MTLTexture?]
     {
-        return self.d_defferedFineBuffer
+        return self.d_defferredFineBuffer
     }
 
-    func getIntermediateDefferedBuffer() -> [MTLTexture?]
+    func getIntermediatedefferredBuffer() -> [MTLTexture?]
     {
-        return self.d_defferedCoarseBuffer
+        return self.d_defferredCoarseBuffer
     }
 
 }

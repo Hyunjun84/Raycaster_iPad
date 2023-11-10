@@ -13,8 +13,7 @@ using namespace metal;
 constant int shaderType [[ function_constant(FC_SHADER_TYPE) ]];
 
 constant bool isCurvature = (shaderType==ST_CURVATURE);
-constant bool isError = (shaderType==ST_ERROR);
-constant bool needColorMap = (isCurvature || isError);
+constant bool needColorMap = isCurvature;
 
 constexpr sampler linear_sampler(coord::normalized,
                                  filter::linear,
@@ -81,23 +80,11 @@ float4 MinMaxCurvature(float3 g, float3 dii, float3 dij, texture2d<float,access:
     return ColorMap.sample(linear_sampler, tc);
 }
 
-float4 Error(float3 p, float3 g, texture2d<float, access::sample> ColorMap, float isovalue)
-{
-    const float alpha = 0.25f;
-    const float fm = 6;
-    float r = 1.f - sinpi(p.z*0.5f) + alpha*(1.f + cospi(2.f*fm*cospi(sqrt(p.x*p.x+p.y*p.y)*0.5f)));
-    float ml = r/(2.f*(1.f+alpha));
-    
-    float t = (ml-isovalue)*4+0.5;
-    return ColorMap.sample(linear_sampler, float2(t,t))*2-1;
-}
-
 [[fragment]] float4 fragmentShader(RasterizerData in [[stage_in]],
                                constant float4x4& MV [[ buffer(0) ]],
                                constant Light& light [[buffer(1)]],
                                constant Material& front [[buffer(2)]],
                                constant Material& back [[buffer(3)]],
-                               constant float& isovalue [[buffer(4), function_constant(isError)]],
                                texture2d<float,access::sample> Pos [[ texture(0) ]],
                                texture2d<float,access::sample> Grad [[ texture(1) ]],
                                texture2d<float,access::sample> HessianII [[ texture(2), function_constant(isCurvature) ]],
@@ -131,10 +118,6 @@ float4 Error(float3 p, float3 g, texture2d<float, access::sample> ColorMap, floa
                 color = MinMaxCurvature(g, dii, dij, ColorMap);
             }
                 break;
-                
-            case ST_ERROR :
-                color = Error(p.xyz, g, ColorMap, isovalue);
-                break;             
         }
     }
     

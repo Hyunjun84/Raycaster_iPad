@@ -145,11 +145,6 @@ class Renderer {
             renderEncoder?.setFragmentTexture(buffer[1], index: 1)
             
             
-            if currentShader == ST_ERROR.rawValue {
-                var lvl = level
-                renderEncoder?.setFragmentBytes(&lvl, length: 4, index: 4)
-                renderEncoder?.setFragmentTexture(d_colormap, index: 4)
-            }
             if currentShader == ST_CURVATURE.rawValue {
                 renderEncoder?.setFragmentTexture(buffer[2], index: 2)
                 renderEncoder?.setFragmentTexture(buffer[3], index: 3)
